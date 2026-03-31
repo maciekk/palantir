@@ -165,10 +165,16 @@ class PalantirApp(App):
         self.articles: list[Article] = []
         self.current_article: Optional[Article] = None
         self._current_topic_id: Optional[str] = None
+        import os
         self._ai_loading = False
         self._status_msg = "Starting…"
-        self._ai_backend = "detecting…"
-        self._probe_ai_backend()
+        # Determine Groq availability immediately (env var check is instant).
+        # Ollama requires a network probe — done async below.
+        if os.environ.get("GROQ_API_KEY"):
+            self._ai_backend = "Groq"
+        else:
+            self._ai_backend = "none"
+        self._probe_ollama()
 
         topic_list = self.query_one("#topic-list", ListView)
         for topic_id, topic in self.topics.items():
@@ -326,15 +332,12 @@ class PalantirApp(App):
             self._set_status(f"Opened: {self.current_article.url[:70]}")
 
     @work
-    async def _probe_ai_backend(self) -> None:
-        import os
-        if await probe_ollama():
-            self._ai_backend = f"Ollama ({self.llm_model})"
-        elif os.environ.get("GROQ_API_KEY"):
-            self._ai_backend = "Groq"
-        else:
-            self._ai_backend = "none"
-        self._update_status()
+    async def _probe_ollama(self) -> None:
+        try:
+            if await probe_ollama():
+                self._ai_backend = f"Ollama ({self.llm_model})"
+        finally:
+            self._update_status()
 
     def _set_status(self, msg: str) -> None:
         self._status_msg = msg
