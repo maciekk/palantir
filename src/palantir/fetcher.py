@@ -39,6 +39,8 @@ class Article:
     summary: str
     published: Optional[datetime]
     full_text: Optional[str] = field(default=None)
+    ai_summary: Optional[str] = field(default=None)
+    ai_attempted: bool = field(default=False)
 
 
 class FeedCache:

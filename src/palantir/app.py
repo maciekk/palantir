@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import re
+import textwrap
 import webbrowser
 from datetime import datetime, timezone
 from typing import Optional
 
+from rich.console import Group
+from rich.markup import escape
+from rich.panel import Panel
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -12,6 +17,8 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
 
 from .config import load_topics
 from .fetcher import Article, FeedFetcher
+from .highlight import extract_keywords, highlight_keywords
+from .summarize import probe_ollama, summarize_article
 
 
 def _format_age(dt: Optional[datetime]) -> str:
@@ -28,6 +35,16 @@ def _format_age(dt: Optional[datetime]) -> str:
     if secs < 86400:
         return f"{int(secs / 3600)}h"
     return f"{int(secs / 86400)}d"
+
+
+def _reflow(text: str, width: int) -> str:
+    if width == 0 or not text:
+        return text
+    paragraphs = re.split(r"\n{2,}", text)
+    return "\n\n".join(
+        textwrap.fill(" ".join(p.split()), width=width)
+        for p in paragraphs
+    )
 
 
 class TopicItem(ListItem):
@@ -123,6 +140,11 @@ class PalantirApp(App):
         Binding("q", "quit", "Quit"),
     ]
 
+    def __init__(self, max_width: int = 120, llm_model: str = "llama3.2", **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.max_width = max_width
+        self.llm_model = llm_model
+
     def compose(self) -> ComposeResult:
         yield Header()
         with Horizontal(id="layout"):
@@ -143,10 +165,16 @@ class PalantirApp(App):
         self.articles: list[Article] = []
         self.current_article: Optional[Article] = None
         self._current_topic_id: Optional[str] = None
+        self._ai_loading = False
+        self._status_msg = "Starting…"
+        self._ai_backend = "detecting…"
+        self._probe_ai_backend()
 
         topic_list = self.query_one("#topic-list", ListView)
         for topic_id, topic in self.topics.items():
             topic_list.append(TopicItem(topic_id, topic["name"]))
+
+        self._update_status()
 
         if self.topics:
             first_id = next(iter(self.topics))
@@ -211,8 +239,8 @@ class PalantirApp(App):
         content = self.query_one("#article-content", Static)
         self._set_status("Fetching full text…")
         content.update(
-            f"[bold]{article.title}[/bold]\n"
-            f"[dim]{article.source}  ·  {article.url}[/dim]\n\n"
+            f"[bold]{escape(article.title)}[/bold]\n"
+            f"[dim]{escape(article.source)}  ·  {escape(article.url)}[/dim]\n\n"
             "[dim]Fetching full article text…[/dim]"
         )
 
@@ -223,8 +251,8 @@ class PalantirApp(App):
             self._set_status("Article loaded.")
         else:
             content.update(
-                f"[bold]{article.title}[/bold]\n"
-                f"[dim]{article.source}[/dim]\n\n"
+                f"[bold]{escape(article.title)}[/bold]\n"
+                f"[dim]{escape(article.source)}[/dim]\n\n"
                 "[red]Could not fetch article text.[/red]"
             )
             self._set_status("Failed to fetch article.")
@@ -232,19 +260,57 @@ class PalantirApp(App):
     def _show_summary(self, article: Article) -> None:
         content = self.query_one("#article-content", Static)
         age = _format_age(article.published)
-        lines = [
-            f"[bold]{article.title}[/bold]",
-            f"[dim]{article.source}  ·  {age}  ·  {article.url}[/dim]",
+
+        parts: list = [
+            f"[bold]{escape(article.title)}[/bold]",
+            f"[dim]{escape(article.source)}  ·  {age}  ·  {escape(article.url)}[/dim]",
             "",
         ]
+
+        if article.ai_summary:
+            parts.append(Panel(
+                escape(article.ai_summary),
+                title="[bold]AI Summary[/bold]",
+                border_style="orange1",
+                padding=(0, 1),
+            ))
+            parts.append("")
+        elif self._ai_loading:
+            parts += ["[dim]Generating AI summary…[/dim]", ""]
+
+        keywords = extract_keywords(article.title)
         if article.full_text:
-            lines.append(article.full_text)
+            body = _reflow(article.full_text, self.max_width)
+            parts.append(highlight_keywords(body, keywords))
         elif article.summary:
-            lines.append(article.summary)
-            lines += ["", "[dim italic]Press Enter or f to fetch full article[/dim italic]"]
+            body = _reflow(article.summary, self.max_width)
+            parts.append(highlight_keywords(body, keywords))
+            parts += ["", "[dim italic]Press Enter or f to fetch full article[/dim italic]"]
         else:
-            lines.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
-        content.update("\n".join(lines))
+            parts.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
+
+        content.update(Group(*parts))
+
+        if not article.ai_attempted and not self._ai_loading:
+            self._generate_ai_summary(article)
+
+    @work
+    async def _generate_ai_summary(self, article: Article) -> None:
+        if article.ai_attempted:
+            return
+        article.ai_attempted = True
+        self._ai_loading = True
+        self._show_summary(article)
+        try:
+            text = article.full_text or article.summary or ""
+            if text:
+                article.ai_summary = await summarize_article(
+                    article.title, text, self.llm_model
+                )
+        finally:
+            self._ai_loading = False
+        if self.current_article is article:
+            self._show_summary(article)
 
     def action_refresh(self) -> None:
         self.fetcher.cache.invalidate_all()
@@ -259,5 +325,23 @@ class PalantirApp(App):
             webbrowser.open(self.current_article.url)
             self._set_status(f"Opened: {self.current_article.url[:70]}")
 
+    @work
+    async def _probe_ai_backend(self) -> None:
+        import os
+        if await probe_ollama():
+            self._ai_backend = f"Ollama ({self.llm_model})"
+        elif os.environ.get("GROQ_API_KEY"):
+            self._ai_backend = "Groq"
+        else:
+            self._ai_backend = "none"
+        self._update_status()
+
     def _set_status(self, msg: str) -> None:
-        self.query_one("#status", Static).update(msg)
+        self._status_msg = msg
+        self._update_status()
+
+    def _update_status(self) -> None:
+        width_info = f"width:{self.max_width}" if self.max_width else "width:off"
+        right = f"AI:{self._ai_backend}  {width_info}"
+        bar = self.query_one("#status", Static)
+        bar.update(f"{self._status_msg}  [dim]·[/dim]  {right}")
