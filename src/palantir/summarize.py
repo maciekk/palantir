@@ -8,14 +8,24 @@ _GROQ_MODEL = "llama-3.1-8b-instant"
 _OLLAMA_BASE = "http://localhost:11434"
 
 
-async def probe_ollama() -> bool:
-    """Return True if Ollama is reachable."""
+async def probe_ollama() -> str | None:
+    """Return the best available Ollama model name, or None if unreachable."""
     try:
         async with httpx.AsyncClient(timeout=3) as client:
             r = await client.get(f"{_OLLAMA_BASE}/api/tags")
-            return r.status_code == 200
+            if r.status_code != 200:
+                return None
+            models = [m["name"] for m in r.json().get("models", [])]
+            if not models:
+                return None
+            # Prefer llama3.2 variants, then llama3, then first available
+            for preferred in ("llama3.2", "llama3", "llama"):
+                for name in models:
+                    if name.startswith(preferred):
+                        return name
+            return models[0]
     except Exception:
-        return False
+        return None
 
 
 async def summarize_article(title: str, text: str, ollama_model: str = "llama3.2") -> str | None:
