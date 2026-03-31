@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import re
 import textwrap
 import webbrowser
@@ -8,7 +9,6 @@ from typing import Optional
 
 from rich.console import Group
 from rich.markup import escape
-from rich.panel import Panel
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -166,7 +166,6 @@ class PalantirApp(App):
         self.current_article: Optional[Article] = None
         self._current_topic_id: Optional[str] = None
         import os
-        self._ai_loading = False
         self._status_msg = "Starting…"
         self._ai_backend = "none"
 
@@ -274,39 +273,35 @@ class PalantirApp(App):
             "",
         ]
 
+        if article.summary:
+            parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
+
         if article.ai_summary:
-            parts.append(Panel(
-                escape(article.ai_summary),
-                title="[bold]AI Summary[/bold]",
-                border_style="orange1",
-                padding=(0, 1),
-            ))
-            parts.append("")
-        elif self._ai_loading:
+            bar_width = (self.max_width or 80) - 2
+            reflowed = _reflow(article.ai_summary, bar_width)
+            lines = escape(reflowed).splitlines() or [""]
+            bar = "\n".join(f"[orange1]▌[/orange1] {line}" for line in lines)
+            parts += ["[bold orange1]Summary[/bold orange1]", bar, ""]
+        elif article.ai_loading:
             parts += ["[dim]Generating AI summary…[/dim]", ""]
 
         keywords = extract_keywords(article.title)
         if article.full_text:
             body = _reflow(article.full_text, self.max_width)
             parts.append(highlight_keywords(body, keywords))
-        elif article.summary:
-            body = _reflow(article.summary, self.max_width)
-            parts.append(highlight_keywords(body, keywords))
-            parts += ["", "[dim italic]Press Enter or f to fetch full article[/dim italic]"]
-        else:
+        elif not article.summary:
             parts.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
+        else:
+            parts += ["[dim italic]Press Enter or f to fetch full article[/dim italic]"]
 
         content.update(Group(*parts))
 
-        if not article.ai_attempted and not self._ai_loading:
-            self._generate_ai_summary(article)
+        if not article.ai_attempted:
+            article.ai_attempted = True
+            asyncio.ensure_future(self._generate_ai_summary(article))
 
-    @work
     async def _generate_ai_summary(self, article: Article) -> None:
-        if article.ai_attempted:
-            return
-        article.ai_attempted = True
-        self._ai_loading = True
+        article.ai_loading = True
         self._show_summary(article)
         try:
             text = article.full_text or article.summary or ""
@@ -315,7 +310,7 @@ class PalantirApp(App):
                     article.title, text, self.llm_model
                 )
         finally:
-            self._ai_loading = False
+            article.ai_loading = False
         if self.current_article is article:
             self._show_summary(article)
 

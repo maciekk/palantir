@@ -30,7 +30,8 @@ async def probe_ollama() -> str | None:
 
 async def summarize_article(title: str, text: str, ollama_model: str = "llama3.2") -> str | None:
     prompt = (
-        f"Summarize this news article in one concise paragraph:\n\n"
+        f"Summarize this news article in one concise paragraph. "
+        f"Output only the summary text, no preamble or introduction.\n\n"
         f"Title: {title}\n\n{text[:4000]}"
     )
     result = await _try_ollama(prompt, ollama_model)
