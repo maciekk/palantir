@@ -1,0 +1,42 @@
+# Palantir feed configuration.
+# To customise, copy this file to ~/.config/palantir/feeds.toml and edit freely.
+# Each topic has a display name and a list of RSS/Atom feed URLs.
+# Failed or slow feeds are silently skipped.
+
+[topics.tech]
+name = "Tech"
+feeds = [
+    {name = "Ars Technica",  url = "https://feeds.arstechnica.com/arstechnica/index"},
+    {name = "The Register",  url = "https://www.theregister.com/headlines.atom"},
+    {name = "Hacker News",   url = "https://news.ycombinator.com/rss"},
+]
+
+[topics.world]
+name = "World News"
+feeds = [
+    {name = "BBC World",     url = "http://feeds.bbci.co.uk/news/world/rss.xml"},
+    {name = "The Guardian",  url = "https://www.theguardian.com/world/rss"},
+]
+
+[topics.canada]
+name = "Canada"
+feeds = [
+    {name = "CBC Top Stories", url = "https://www.cbc.ca/cmlink/rss-topstories"},
+    {name = "CBC Canada",      url = "https://www.cbc.ca/cmlink/rss-canada"},
+]
+
+[topics.waterloo]
+name = "Waterloo ON"
+feeds = [
+    {name = "CBC KW",      url = "https://www.cbc.ca/cmlink/rss-canada-kitchenerwaterloo"},
+    {name = "The Record",  url = "https://www.therecord.com/rss.xml"},
+]
+
+[topics.ai_dev]
+name = "AI & Dev"
+feeds = [
+    {name = "Simon Willison",    url = "https://simonwillison.net/atom/everything/"},
+    {name = "The Register (AI)", url = "https://www.theregister.com/software/ai_ml/headlines.atom"},
+    {name = "InfoQ",             url = "https://feed.infoq.com/"},
+    {name = "ACM Queue",         url = "https://queue.acm.org/rss/feeds/queuecontent.xml"},
+]
