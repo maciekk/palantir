@@ -40,11 +40,9 @@ def _format_age(dt: Optional[datetime]) -> str:
 def _reflow(text: str, width: int) -> str:
     if width == 0 or not text:
         return text
-    paragraphs = re.split(r"\n{2,}", text)
-    return "\n\n".join(
-        textwrap.fill(" ".join(p.split()), width=width)
-        for p in paragraphs
-    )
+    paragraphs = re.split(r"\n+", text)
+    filled = [textwrap.fill(" ".join(p.split()), width=width) for p in paragraphs if p.strip()]
+    return "\n\n".join(filled)
 
 
 class TopicItem(ListItem):
@@ -265,6 +263,12 @@ class PalantirApp(App):
 
     def _show_summary(self, article: Article) -> None:
         content = self.query_one("#article-content", Static)
+        article_view = self.query_one("#article-view")
+        available_width = article_view.size.width - 5  # 4 for padding:1 2, 1 for scrollbar
+        if self.max_width and available_width > 0:
+            reflow_width = min(self.max_width, available_width)
+        else:
+            reflow_width = available_width if available_width > 0 else self.max_width
         age = _format_age(article.published)
 
         parts: list = [
@@ -277,7 +281,7 @@ class PalantirApp(App):
             parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
 
         if article.ai_summary:
-            bar_width = (self.max_width or 80) - 2
+            bar_width = max(reflow_width - 2, 20)
             reflowed = _reflow(article.ai_summary, bar_width)
             lines = escape(reflowed).splitlines() or [""]
             bar = "\n".join(f"[orange1]▌[/orange1] {line}" for line in lines)
@@ -287,7 +291,7 @@ class PalantirApp(App):
 
         keywords = extract_keywords(article.title)
         if article.full_text:
-            body = _reflow(article.full_text, self.max_width)
+            body = _reflow(article.full_text, reflow_width)
             parts.append(highlight_keywords(body, keywords))
         elif not article.summary:
             parts.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
@@ -318,6 +322,10 @@ class PalantirApp(App):
         self.fetcher.cache.invalidate_all()
         if self._current_topic_id:
             self._load_topic(self._current_topic_id)
+
+    def on_resize(self, event) -> None:
+        if getattr(self, "current_article", None):
+            self._show_summary(self.current_article)
 
     def action_fetch_full(self) -> None:
         self._fetch_full_text()
