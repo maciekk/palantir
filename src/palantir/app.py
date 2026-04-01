@@ -104,7 +104,7 @@ class PalantirApp(App):
     }
 
     #article-list {
-        height: 45%;
+        height: 70%;
         border-bottom: solid $primary-darken-2;
     }
 
@@ -207,6 +207,14 @@ class PalantirApp(App):
             return
         self.current_article = event.item.article
         self._show_summary(event.item.article)
+        # Keep 1-2 items visible below cursor
+        article_list = self.query_one("#article-list", ListView)
+        idx = article_list.index
+        if idx is not None:
+            children = list(article_list.query(ListItem))
+            target_idx = min(idx + 2, len(children) - 1)
+            if target_idx > idx:
+                article_list.scroll_to_widget(children[target_idx], animate=False)
 
     @on(ListView.Selected, "#article-list")
     def on_article_selected(self, event: ListView.Selected) -> None:
@@ -280,6 +288,13 @@ class PalantirApp(App):
             )
             self._set_status("Failed to fetch article.")
 
+    def _update_layout(self) -> None:
+        article_list = self.query_one("#article-list")
+        if self.current_article and self.current_article.full_text:
+            article_list.styles.height = "20%"
+        else:
+            article_list.styles.height = "70%"
+
     def _show_summary(self, article: Article) -> None:
         content = self.query_one("#article-content", Static)
         article_view = self.query_one("#article-view")
@@ -324,6 +339,7 @@ class PalantirApp(App):
         parts += ["", f"[dim]{escape(article.url)}[/dim]"]
 
         content.update(Group(*parts))
+        self._update_layout()
 
         if not article.ai_attempted:
             article.ai_attempted = True
