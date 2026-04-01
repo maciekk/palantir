@@ -259,6 +259,8 @@ class PalantirApp(App):
         text = await self.fetcher.fetch_article_text(article.url)
         if text:
             article.full_text = text
+            article.ai_attempted = False
+            article.ai_summary = None
             self._show_summary(article)
             self._set_status("Article loaded.")
         else:
@@ -290,20 +292,19 @@ class PalantirApp(App):
             "",
         ]
 
-        if article.ai_summary:
-            bar_width = max(reflow_width - 2, 20)
-            reflowed = _reflow(article.ai_summary, bar_width)
-            lines = escape(reflowed).splitlines() or [""]
-            bar = "\n".join(f"[orange1]▌[/orange1] {line}" for line in lines)
-            parts += ["[bold orange1]Summary[/bold orange1]", bar, ""]
-        elif article.ai_loading:
-            parts += ["[dim]Generating AI summary…[/dim]", ""]
-
         if article.summary:
             parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
 
         keywords = extract_keywords(article.title)
         if article.full_text:
+            if article.ai_summary:
+                bar_width = max(reflow_width - 2, 20)
+                reflowed = _reflow(article.ai_summary, bar_width)
+                lines = escape(reflowed).splitlines() or [""]
+                bar = "\n".join(f"[orange1]▌[/orange1] {line}" for line in lines)
+                parts += ["[bold orange1]AI Summary[/bold orange1]", bar, ""]
+            elif article.ai_loading:
+                parts += ["[dim]Generating AI summary…[/dim]", ""]
             body = _reflow(article.full_text, reflow_width)
             parts.append(highlight_keywords(body, keywords))
         elif not article.summary:
