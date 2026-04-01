@@ -69,11 +69,8 @@ class ArticleItem(ListItem):
         self.article = article
 
     def compose(self) -> ComposeResult:
-        title = self.article.title
-        if len(title) > 65:
-            title = title[:62] + "…"
         age = _format_age(self.article.published)
-        yield Label(title, classes="article-title")
+        yield Label(self.article.title, classes="article-title")
         yield Label(f"  {self.article.source}  ·  {age}", classes="article-meta")
 
 
@@ -118,6 +115,7 @@ class PalantirApp(App):
 
     .article-title {
         color: $text;
+        overflow: hidden hidden;
     }
 
     .article-meta {
