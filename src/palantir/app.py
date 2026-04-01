@@ -192,6 +192,7 @@ class PalantirApp(App):
             first_id = next(iter(self.topics))
             self._current_topic_id = first_id
             topic_list.focus()
+            topic_list.index = 0
             self._load_topic(first_id)
 
     @on(ListView.Highlighted, "#topic-list")
@@ -235,6 +236,7 @@ class PalantirApp(App):
         else:
             for article in articles:
                 article_list.append(ArticleItem(article))
+            article_list.index = 0
             self._set_status(f"{len(articles)} articles · {topic['name']}")
             self.current_article = articles[0]
             self._show_summary(articles[0])
