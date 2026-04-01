@@ -262,7 +262,16 @@ class PalantirApp(App):
             article.ai_attempted = False
             article.ai_summary = None
             self._show_summary(article)
-            self._set_status("Article loaded.")
+            words = len(text.split())
+            byte_size = len(text.encode())
+            if byte_size >= 1024:
+                size_str = f"{byte_size / 1024:.1f} KB"
+            else:
+                size_str = f"{byte_size} B"
+            mins = max(1, round(words / 200))
+            read_str = f"{mins} min read"
+            age = _format_age(article.published)
+            self._set_status(f"Article: {size_str}  ·  {words:,} words  ·  {read_str}  ·  {age} old")
         else:
             content.update(
                 f"[bold]{escape(article.title)}[/bold]\n"
@@ -308,9 +317,9 @@ class PalantirApp(App):
             body = _reflow(article.full_text, reflow_width)
             parts.append(highlight_keywords(body, keywords))
         elif not article.summary:
-            parts.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
+            parts.append("[bright_green]>> [/bright_green][dim]No preview available. Press Enter or f to fetch full article.[/dim]")
         else:
-            parts += ["[dim italic]Press Enter or f to fetch full article[/dim italic]"]
+            parts += ["[bright_green]>> [/bright_green][dim italic]Press Enter or f to fetch full article[/dim italic]"]
 
         parts += ["", f"[dim]{escape(article.url)}[/dim]"]
 
@@ -340,6 +349,8 @@ class PalantirApp(App):
             self._load_topic(self._current_topic_id)
 
     def on_resize(self, event) -> None:
+        if getattr(self, "_ai_backend", None):
+            self._update_status()
         if getattr(self, "current_article", None):
             self._show_summary(self.current_article)
 
@@ -356,7 +367,8 @@ class PalantirApp(App):
         self._update_status()
 
     def _update_status(self) -> None:
-        width_info = f"width:{self.max_width}" if self.max_width else "width:off"
-        right = f"AI:{self._ai_backend}  {width_info}"
         bar = self.query_one("#status", Static)
-        bar.update(f"{self._status_msg}  [dim]·[/dim]  {right}")
+        right = f"AI: {self._ai_backend}"
+        bar_width = bar.size.width - 2  # account for padding: 0 1
+        gap = max(1, bar_width - len(self._status_msg) - len(right))
+        bar.update(f"{self._status_msg}{' ' * gap}{right}")
