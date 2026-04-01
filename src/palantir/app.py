@@ -37,6 +37,14 @@ def _format_age(dt: Optional[datetime]) -> str:
     return f"{int(secs / 86400)}d"
 
 
+def _word_count(article: "Article") -> str:
+    text = article.full_text or article.summary or ""
+    count = len(text.split()) if text else 0
+    if count == 0:
+        return ""
+    return f"{count:,}w"
+
+
 def _reflow(text: str, width: int) -> str:
     if width == 0 or not text:
         return text
@@ -271,14 +279,16 @@ class PalantirApp(App):
             reflow_width = available_width if available_width > 0 else self.max_width
         age = _format_age(article.published)
 
+        meta = f"{escape(article.source)}  ·  {age}"
+        if article.full_text:
+            wc = _word_count(article)
+            if wc:
+                meta += f"  ·  {wc}"
         parts: list = [
             f"[bold]{escape(article.title)}[/bold]",
-            f"[dim]{escape(article.source)}  ·  {age}  ·  {escape(article.url)}[/dim]",
+            f"[dim]{meta}[/dim]",
             "",
         ]
-
-        if article.summary:
-            parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
 
         if article.ai_summary:
             bar_width = max(reflow_width - 2, 20)
@@ -289,6 +299,9 @@ class PalantirApp(App):
         elif article.ai_loading:
             parts += ["[dim]Generating AI summary…[/dim]", ""]
 
+        if article.summary:
+            parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
+
         keywords = extract_keywords(article.title)
         if article.full_text:
             body = _reflow(article.full_text, reflow_width)
@@ -297,6 +310,8 @@ class PalantirApp(App):
             parts.append("[dim]No preview available. Press Enter or f to fetch full article.[/dim]")
         else:
             parts += ["[dim italic]Press Enter or f to fetch full article[/dim italic]"]
+
+        parts += ["", f"[dim]{escape(article.url)}[/dim]"]
 
         content.update(Group(*parts))
 
