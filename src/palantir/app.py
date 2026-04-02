@@ -64,8 +64,8 @@ class TopicItem(ListItem):
 
 
 class ArticleItem(ListItem):
-    def __init__(self, article: Article, highlight: bool = False) -> None:
-        super().__init__()
+    def __init__(self, article: Article, highlight: bool = False, stripe: bool = False) -> None:
+        super().__init__(classes="stripe" if stripe else "")
         self.article = article
         self._highlight = highlight
 
@@ -104,6 +104,10 @@ class PalantirApp(App):
         background: $surface;
     }
 
+    #sidebar ListView:focus {
+        background-tint: transparent;
+    }
+
     #right {
         width: 1fr;
         height: 1fr;
@@ -117,6 +121,18 @@ class PalantirApp(App):
     #article-list > ListItem {
         padding: 0 1;
         height: auto;
+    }
+
+    .stripe {
+        background: $surface-lighten-2;
+    }
+
+    #article-list:focus {
+        background-tint: transparent;
+    }
+
+    #article-list > ListItem.stripe.-highlight {
+        background: $block-cursor-background;
     }
 
     .article-title {
@@ -283,8 +299,8 @@ class PalantirApp(App):
             content.update("[dim]No articles found.[/dim]")
             self._set_status(f"No articles · {topic['name']}")
         else:
-            for article in articles:
-                article_list.append(ArticleItem(article, highlight=self._highlight_list))
+            for i, article in enumerate(articles):
+                article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1))
             article_list.index = 0
             self._set_status(f"{len(articles)} articles · {topic['name']}")
             self.current_article = articles[0]
@@ -422,8 +438,8 @@ class PalantirApp(App):
         article_list = self.query_one("#article-list", ListView)
         current_index = article_list.index
         article_list.clear()
-        for article in self.articles:
-            article_list.append(ArticleItem(article, highlight=self._highlight_list))
+        for i, article in enumerate(self.articles):
+            article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1))
         if self.articles and current_index is not None:
             article_list.index = current_index
 

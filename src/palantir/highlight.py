@@ -32,4 +32,4 @@ def highlight_keywords(text: str, keywords: list[str]) -> str:
         r"\b(" + "|".join(re.escape(k) for k in keywords) + r")\b",
         re.IGNORECASE,
     )
-    return pattern.sub(lambda m: f"[bold]{m.group(0)}[/bold]", escaped)
+    return pattern.sub(lambda m: f"[bold #ddb96a]{m.group(0)}[/bold #ddb96a]", escaped)
