@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 
 import httpx
@@ -18,6 +19,39 @@ async def list_ollama_models() -> list[str]:
             return [m["name"] for m in r.json().get("models", [])]
     except Exception:
         return []
+
+
+async def extract_keywords_batch(
+    titles: list[str], ollama_model: str = "llama3.2"
+) -> list[list[str]]:
+    """Return 2-3 key words (subject/verb/object) per title via LLM, or [] per title on failure."""
+    if not titles:
+        return []
+    numbered = "\n".join(f'{i + 1}. "{t}"' for i, t in enumerate(titles))
+    prompt = (
+        "For each news headline below, identify the 2-3 most important words: "
+        "the key subject (who/what), the main verb (what happened), and optionally the object. "
+        "Reply with ONLY a JSON array of arrays of lowercase words, one inner array per headline. "
+        'Example for 2 headlines: [["nasa", "launches", "satellite"], ["trump", "signs"]]\n\n'
+        f"{numbered}"
+    )
+    raw = await _try_ollama(prompt, ollama_model)
+    if raw is None:
+        raw = await _try_groq(prompt)
+    if raw is None:
+        return [[] for _ in titles]
+    try:
+        start = raw.index("[")
+        end = raw.rindex("]") + 1
+        data = json.loads(raw[start:end])
+        if isinstance(data, list) and len(data) == len(titles):
+            return [
+                [str(w).lower() for w in item[:3]] if isinstance(item, list) else []
+                for item in data
+            ]
+    except Exception:
+        pass
+    return [[] for _ in titles]
 
 
 async def summarize_article(title: str, text: str, ollama_model: str = "llama3.2") -> str | None:

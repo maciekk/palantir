@@ -42,6 +42,7 @@ class Article:
     ai_summary: Optional[str] = field(default=None)
     ai_attempted: bool = field(default=False)
     ai_loading: bool = field(default=False)
+    keywords: Optional[list[str]] = field(default=None)
 
 
 class FeedCache:

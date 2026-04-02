@@ -12,13 +12,16 @@ _STOP_WORDS = {
 }
 
 
-def extract_keywords(title: str) -> list[str]:
+def extract_keywords(title: str, max_keywords: int = 0) -> list[str]:
     tokens = re.split(r"\W+", title.lower())
     seen: dict[str, None] = {}
     for t in tokens:
         if len(t) >= 4 and t not in _STOP_WORDS:
             seen[t] = None
-    return list(seen.keys())
+    words = list(seen.keys())
+    if max_keywords:
+        words = sorted(words, key=len, reverse=True)[:max_keywords]
+    return words
 
 
 def highlight_keywords(text: str, keywords: list[str]) -> str:
@@ -29,4 +32,4 @@ def highlight_keywords(text: str, keywords: list[str]) -> str:
         r"\b(" + "|".join(re.escape(k) for k in keywords) + r")\b",
         re.IGNORECASE,
     )
-    return pattern.sub(lambda m: f"[bold yellow]{m.group(0)}[/bold yellow]", escaped)
+    return pattern.sub(lambda m: f"[bold]{m.group(0)}[/bold]", escaped)

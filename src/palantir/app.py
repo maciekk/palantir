@@ -18,7 +18,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Select, S
 from .config import load_topics
 from .fetcher import Article, FeedFetcher
 from .highlight import extract_keywords, highlight_keywords
-from .summarize import list_ollama_models, summarize_article
+from .summarize import extract_keywords_batch, list_ollama_models, probe_ollama, summarize_article
 
 
 def _format_age(dt: Optional[datetime]) -> str:
@@ -64,13 +64,19 @@ class TopicItem(ListItem):
 
 
 class ArticleItem(ListItem):
-    def __init__(self, article: Article) -> None:
+    def __init__(self, article: Article, highlight: bool = False) -> None:
         super().__init__()
         self.article = article
+        self._highlight = highlight
 
     def compose(self) -> ComposeResult:
         age = _format_age(self.article.published)
-        yield Label(self.article.title, classes="article-title")
+        if self._highlight:
+            keywords = self.article.keywords or extract_keywords(self.article.title, max_keywords=3)
+            title_markup = highlight_keywords(self.article.title, keywords)
+        else:
+            title_markup = escape(self.article.title)
+        yield Label(title_markup, classes="article-title")
         yield Label(f"  {self.article.source}  ·  {age}", classes="article-meta")
 
 
@@ -162,6 +168,7 @@ class PalantirApp(App):
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
         Binding("f", "fetch_full", "Fetch full text"),
+        Binding("h", "toggle_list_highlight", "Highlight list"),
         Binding("o", "open_url", "Open in browser"),
         Binding("q", "quit", "Quit"),
     ]
@@ -196,6 +203,7 @@ class PalantirApp(App):
         import os
         self._status_msg = "Starting…"
         self._ai_backend = "none"
+        self._highlight_list = False
 
         models = await list_ollama_models()
         model_select = self.query_one("#model-select", Select)
@@ -276,11 +284,12 @@ class PalantirApp(App):
             self._set_status(f"No articles · {topic['name']}")
         else:
             for article in articles:
-                article_list.append(ArticleItem(article))
+                article_list.append(ArticleItem(article, highlight=self._highlight_list))
             article_list.index = 0
             self._set_status(f"{len(articles)} articles · {topic['name']}")
             self.current_article = articles[0]
             self._show_summary(articles[0])
+            self._extract_article_keywords(articles)
 
     @work(exclusive=True)
     async def _fetch_full_text(self) -> None:
@@ -354,7 +363,7 @@ class PalantirApp(App):
         if article.summary:
             parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
 
-        keywords = extract_keywords(article.title)
+        keywords = article.keywords or extract_keywords(article.title)
         if article.full_text:
             if article.ai_summary:
                 bar_width = max(reflow_width - 2, 20)
@@ -380,6 +389,21 @@ class PalantirApp(App):
             article.ai_attempted = True
             asyncio.ensure_future(self._generate_ai_summary(article))
 
+    @work(exclusive=False)
+    async def _extract_article_keywords(self, articles: list[Article]) -> None:
+        if self._ai_backend == "none":
+            return
+        titles = [a.title for a in articles]
+        keyword_lists = await extract_keywords_batch(titles, self.llm_model)
+        for article, kws in zip(articles, keyword_lists):
+            if kws:
+                article.keywords = kws
+        if self.articles is articles:
+            if self._highlight_list:
+                self._rebuild_article_list()
+            if self.current_article and self.current_article in articles:
+                self._show_summary(self.current_article)
+
     async def _generate_ai_summary(self, article: Article) -> None:
         article.ai_loading = True
         self._show_summary(article)
@@ -393,6 +417,21 @@ class PalantirApp(App):
             article.ai_loading = False
         if self.current_article is article:
             self._show_summary(article)
+
+    def _rebuild_article_list(self) -> None:
+        article_list = self.query_one("#article-list", ListView)
+        current_index = article_list.index
+        article_list.clear()
+        for article in self.articles:
+            article_list.append(ArticleItem(article, highlight=self._highlight_list))
+        if self.articles and current_index is not None:
+            article_list.index = current_index
+
+    def action_toggle_list_highlight(self) -> None:
+        self._highlight_list = not self._highlight_list
+        self._rebuild_article_list()
+        state = "on" if self._highlight_list else "off"
+        self._set_status(f"List keyword highlight {state}")
 
     def action_refresh(self) -> None:
         self.fetcher.cache.invalidate_all()
