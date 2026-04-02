@@ -379,7 +379,9 @@ class PalantirApp(App):
         if article.summary:
             parts += [f"[dim]{escape(article.summary)}[/dim]", ""]
 
-        keywords = article.keywords or extract_keywords(article.title)
+        heuristic_kws = extract_keywords(article.title)
+        kw_set = dict.fromkeys((article.keywords or []) + heuristic_kws)
+        keywords = list(kw_set)
         if article.full_text:
             if article.ai_summary:
                 bar_width = max(reflow_width - 2, 20)

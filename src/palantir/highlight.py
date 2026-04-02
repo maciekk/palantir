@@ -13,11 +13,14 @@ _STOP_WORDS = {
 
 
 def extract_keywords(title: str, max_keywords: int = 0) -> list[str]:
-    tokens = re.split(r"\W+", title.lower())
+    tokens = re.split(r"\W+", title)
     seen: dict[str, None] = {}
     for t in tokens:
-        if len(t) >= 4 and t not in _STOP_WORDS:
-            seen[t] = None
+        lower = t.lower()
+        is_acronym = t.isupper() and len(t) >= 2
+        has_digit = any(c.isdigit() for c in t)
+        if (len(lower) >= 4 or is_acronym or has_digit) and lower not in _STOP_WORDS:
+            seen[lower] = None
     words = list(seen.keys())
     if max_keywords:
         words = sorted(words, key=len, reverse=True)[:max_keywords]

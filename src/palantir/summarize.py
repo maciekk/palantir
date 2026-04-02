@@ -29,10 +29,13 @@ async def extract_keywords_batch(
         return []
     numbered = "\n".join(f'{i + 1}. "{t}"' for i, t in enumerate(titles))
     prompt = (
-        "For each news headline below, identify the 2-3 most important words: "
-        "the key subject (who/what), the main verb (what happened), and optionally the object. "
-        "Reply with ONLY a JSON array of arrays of lowercase words, one inner array per headline. "
-        'Example for 2 headlines: [["nasa", "launches", "satellite"], ["trump", "signs"]]\n\n'
+        "For each news headline below, extract 3-5 keywords that make the headline specific and unique. "
+        "STRONGLY PREFER: acronyms (IPv6, DRAM, SBC, AI, HTTP), technical terms, version numbers, "
+        "product/company/person names, and domain-specific nouns. "
+        "AVOID: generic verbs (kills, launches, signs, hits), common nouns (market, pricing, report, "
+        "issue, users, deal, plan, data), and filler words. "
+        "Reply with ONLY a JSON array of arrays of lowercase strings, one inner array per headline. "
+        'Example: [["ipv6", "address", "memory"], ["dram", "sbc", "hobbyist"]]\n\n'
         f"{numbered}"
     )
     raw = await _try_ollama(prompt, ollama_model)
@@ -46,7 +49,7 @@ async def extract_keywords_batch(
         data = json.loads(raw[start:end])
         if isinstance(data, list) and len(data) == len(titles):
             return [
-                [str(w).lower() for w in item[:3]] if isinstance(item, list) else []
+                [str(w).lower() for w in item[:5]] if isinstance(item, list) else []
                 for item in data
             ]
     except Exception:
