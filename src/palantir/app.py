@@ -13,12 +13,12 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.widgets import Footer, Header, Label, ListItem, ListView, Static
+from textual.widgets import Footer, Header, Label, ListItem, ListView, Select, Static
 
 from .config import load_topics
 from .fetcher import Article, FeedFetcher
 from .highlight import extract_keywords, highlight_keywords
-from .summarize import probe_ollama, summarize_article
+from .summarize import list_ollama_models, summarize_article
 
 
 def _format_age(dt: Optional[datetime]) -> str:
@@ -129,9 +129,31 @@ class PalantirApp(App):
         overflow-y: scroll;
     }
 
-    #status {
+    #bottom-bar {
         height: 1;
         background: $primary-darken-3;
+        color: $text-muted;
+    }
+
+    #status {
+        width: 1fr;
+        height: 1;
+        color: $text-muted;
+        padding: 0 1;
+    }
+
+    #model-select {
+        width: 26;
+        height: 1;
+        background: $primary-darken-3;
+        border: none;
+        color: $text-muted;
+        padding: 0;
+    }
+
+    #model-select > SelectCurrent {
+        background: $primary-darken-3;
+        border: none;
         color: $text-muted;
         padding: 0 1;
     }
@@ -160,7 +182,9 @@ class PalantirApp(App):
                     Static("", id="article-content"),
                     id="article-view",
                 )
-        yield Static("", id="status")
+        with Horizontal(id="bottom-bar"):
+            yield Static("", id="status")
+            yield Select([], id="model-select", prompt="no models", allow_blank=True, compact=True)
         yield Footer()
 
     async def on_mount(self) -> None:
@@ -173,10 +197,14 @@ class PalantirApp(App):
         self._status_msg = "Starting…"
         self._ai_backend = "none"
 
-        model = await probe_ollama()
-        if model is not None:
-            self.llm_model = model
-            self._ai_backend = f"Ollama ({model})"
+        models = await list_ollama_models()
+        model_select = self.query_one("#model-select", Select)
+        if models:
+            model_select.set_options([(m, m) for m in models])
+            default = "gemma4:latest"
+            self.llm_model = default if default in models else models[0]
+            model_select.value = self.llm_model
+            self._ai_backend = f"Ollama ({self.llm_model})"
         elif os.environ.get("GROQ_API_KEY"):
             self._ai_backend = "Groq"
 
@@ -219,6 +247,13 @@ class PalantirApp(App):
     @on(ListView.Selected, "#article-list")
     def on_article_selected(self, event: ListView.Selected) -> None:
         self._fetch_full_text()
+
+    @on(Select.Changed, "#model-select")
+    def on_model_selected(self, event: Select.Changed) -> None:
+        if event.value is not Select.BLANK:
+            self.llm_model = str(event.value)
+            self._ai_backend = f"Ollama ({self.llm_model})"
+            self._update_status()
 
     @work(exclusive=True)
     async def _load_topic(self, topic_id: str) -> None:
@@ -383,8 +418,4 @@ class PalantirApp(App):
         self._update_status()
 
     def _update_status(self) -> None:
-        bar = self.query_one("#status", Static)
-        right = f"AI: {self._ai_backend}"
-        bar_width = bar.size.width - 2  # account for padding: 0 1
-        gap = max(1, bar_width - len(self._status_msg) - len(right))
-        bar.update(f"{self._status_msg}{' ' * gap}{right}")
+        self.query_one("#status", Static).update(self._status_msg)

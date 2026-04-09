@@ -14,9 +14,9 @@ def main() -> None:
     )
     parser.add_argument(
         "--llm-model",
-        default="llama3.2",
+        default="gemma4:latest",
         metavar="MODEL",
-        help="Ollama model for AI summaries (default: llama3.2)",
+        help="Ollama model for AI summaries (default: gemma4:latest)",
     )
     args = parser.parse_args()
     PalantirApp(max_width=args.width, llm_model=args.llm_model).run()
