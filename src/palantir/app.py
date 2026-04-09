@@ -18,7 +18,7 @@ from textual.widgets import Footer, Header, Label, ListItem, ListView, Select, S
 from .config import load_topics
 from .fetcher import Article, FeedFetcher
 from .highlight import extract_keywords, highlight_keywords
-from .summarize import extract_keywords_batch, list_ollama_models, probe_ollama, summarize_article
+from .summarize import extract_keywords_batch, list_ollama_models, summarize_article
 
 
 def _format_age(dt: Optional[datetime]) -> str:
@@ -403,7 +403,7 @@ class PalantirApp(App):
         content.update(Group(*parts))
         self._update_layout()
 
-        if not article.ai_attempted:
+        if not article.ai_attempted and article.full_text:
             article.ai_attempted = True
             asyncio.ensure_future(self._generate_ai_summary(article))
 
