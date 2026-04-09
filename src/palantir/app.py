@@ -64,20 +64,57 @@ class TopicItem(ListItem):
 
 
 class ArticleItem(ListItem):
-    def __init__(self, article: Article, highlight: bool = False, stripe: bool = False) -> None:
+    def __init__(self, article: Article, highlight: bool = False, stripe: bool = False, compact: bool = False) -> None:
         super().__init__(classes="stripe" if stripe else "")
         self.article = article
         self._highlight = highlight
+        self._compact = compact
 
     def compose(self) -> ComposeResult:
-        age = _format_age(self.article.published)
-        if self._highlight:
-            keywords = self.article.keywords or extract_keywords(self.article.title, max_keywords=3)
-            title_markup = highlight_keywords(self.article.title, keywords)
+        if self._compact:
+            yield Label("", classes="article-compact-label")
         else:
-            title_markup = escape(self.article.title)
-        yield Label(title_markup, classes="article-title")
-        yield Label(f"  {self.article.source}  ·  {age}", classes="article-meta")
+            age = _format_age(self.article.published)
+            if self._highlight:
+                keywords = self.article.keywords or extract_keywords(self.article.title, max_keywords=3)
+                title_markup = highlight_keywords(self.article.title, keywords)
+            else:
+                title_markup = escape(self.article.title)
+            yield Label(title_markup, classes="article-title")
+            yield Label(f"  {self.article.source}  ·  {age}", classes="article-meta")
+
+    def on_mount(self) -> None:
+        if self._compact:
+            self._update_compact_label()
+
+    def on_resize(self) -> None:
+        if self._compact:
+            self._update_compact_label()
+
+    def _update_compact_label(self) -> None:
+        width = self.size.width - 2  # padding: 0 1 on ListItem
+        if width <= 0:
+            return
+        label = self.query_one(".article-compact-label", Label)
+        age = _format_age(self.article.published)
+        meta = f"{self.article.source} · {age}"
+        meta_len = len(meta)
+        title_avail = width - meta_len - 1  # 1 space separator
+        title = self.article.title
+        if title_avail <= 3:
+            label.update(f"[dim]{escape(meta)}[/dim]")
+            return
+        if len(title) > title_avail:
+            display_title = title[: title_avail - 1] + "…"
+        else:
+            display_title = title
+        if self._highlight:
+            keywords = self.article.keywords or extract_keywords(display_title, max_keywords=3)
+            title_markup = highlight_keywords(display_title, keywords)
+        else:
+            title_markup = escape(display_title)
+        padding = title_avail - len(display_title) + 1
+        label.update(f"{title_markup}{' ' * padding}[dim]{escape(meta)}[/dim]")
 
 
 class PalantirApp(App):
@@ -145,6 +182,10 @@ class PalantirApp(App):
         text-style: italic;
     }
 
+    .article-compact-label {
+        overflow: hidden hidden;
+    }
+
     #article-view {
         height: 1fr;
         padding: 1 2;
@@ -185,6 +226,7 @@ class PalantirApp(App):
         Binding("r", "refresh", "Refresh"),
         Binding("f", "fetch_full", "Fetch full text"),
         Binding("H", "toggle_list_highlight", "Highlight list"),
+        Binding("c", "toggle_compact", "Compact list"),
         Binding("o", "open_url", "Open in browser"),
         Binding("q", "quit", "Quit"),
         Binding("j", "vim_down", "Down", show=False),
@@ -227,6 +269,7 @@ class PalantirApp(App):
         self._status_msg = "Starting…"
         self._ai_backend = "none"
         self._highlight_list = False
+        self._compact_list = False
 
         models = await list_ollama_models()
         model_select = self.query_one("#model-select", Select)
@@ -310,7 +353,7 @@ class PalantirApp(App):
             self._set_status(f"No articles · {topic['name']}")
         else:
             for i, article in enumerate(articles):
-                article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1))
+                article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1, compact=self._compact_list))
             article_list.index = 0
             self._set_status(f"{len(articles)} articles · {topic['name']}")
             self.current_article = articles[0]
@@ -460,7 +503,7 @@ class PalantirApp(App):
         current_index = article_list.index
         article_list.clear()
         for i, article in enumerate(self.articles):
-            article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1))
+            article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1, compact=self._compact_list))
         if self.articles and current_index is not None:
             article_list.index = current_index
 
@@ -469,6 +512,12 @@ class PalantirApp(App):
         self._rebuild_article_list()
         state = "on" if self._highlight_list else "off"
         self._set_status(f"List keyword highlight {state}")
+
+    def action_toggle_compact(self) -> None:
+        self._compact_list = not self._compact_list
+        self._rebuild_article_list()
+        state = "on" if self._compact_list else "off"
+        self._set_status(f"Compact list {state}")
 
     def action_vim_down(self) -> None:
         focused = self.focused
