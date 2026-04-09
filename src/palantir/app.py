@@ -94,7 +94,7 @@ class PalantirApp(App):
     }
 
     #sidebar {
-        width: 22;
+        width: 14;
         border-right: solid $primary-darken-2;
         height: 1fr;
     }
