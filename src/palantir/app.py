@@ -362,8 +362,17 @@ class PalantirApp(App):
         article_list = self.query_one("#article-list")
         if self._reading_mode and self.current_article and self.current_article.full_text:
             article_list.styles.height = "20%"
+            self.call_after_refresh(self._center_article_list_cursor)
         else:
             article_list.styles.height = "70%"
+
+    def _center_article_list_cursor(self) -> None:
+        article_list = self.query_one("#article-list", ListView)
+        idx = article_list.index
+        if idx is not None:
+            children = list(article_list.query(ListItem))
+            if 0 <= idx < len(children):
+                article_list.scroll_to_widget(children[idx], animate=False, center=True)
 
     def _show_summary(self, article: Article) -> None:
         content = self.query_one("#article-content", Static)
