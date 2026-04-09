@@ -460,7 +460,7 @@ class PalantirApp(App):
         if getattr(self, "_ai_backend", None):
             self._update_status()
         if getattr(self, "current_article", None):
-            self._show_summary(self.current_article)
+            self.call_after_refresh(self._show_summary, self.current_article)
 
     def action_fetch_full(self) -> None:
         self._fetch_full_text()
