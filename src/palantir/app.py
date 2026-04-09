@@ -184,9 +184,15 @@ class PalantirApp(App):
     BINDINGS = [
         Binding("r", "refresh", "Refresh"),
         Binding("f", "fetch_full", "Fetch full text"),
-        Binding("h", "toggle_list_highlight", "Highlight list"),
+        Binding("H", "toggle_list_highlight", "Highlight list"),
         Binding("o", "open_url", "Open in browser"),
         Binding("q", "quit", "Quit"),
+        Binding("j", "vim_down", "Down", show=False),
+        Binding("k", "vim_up", "Up", show=False),
+        Binding("h", "vim_left", "Left", show=False),
+        Binding("l", "vim_right", "Right", show=False),
+        Binding("g", "vim_top", "Top", show=False),
+        Binding("G", "vim_bottom", "Bottom", show=False),
     ]
 
     def __init__(self, max_width: int = 120, llm_model: str = "llama3.2", **kwargs) -> None:
@@ -454,6 +460,40 @@ class PalantirApp(App):
         self._rebuild_article_list()
         state = "on" if self._highlight_list else "off"
         self._set_status(f"List keyword highlight {state}")
+
+    def action_vim_down(self) -> None:
+        focused = self.focused
+        if isinstance(focused, ListView):
+            focused.action_cursor_down()
+        else:
+            self.query_one("#article-view").scroll_down()
+
+    def action_vim_up(self) -> None:
+        focused = self.focused
+        if isinstance(focused, ListView):
+            focused.action_cursor_up()
+        else:
+            self.query_one("#article-view").scroll_up()
+
+    def action_vim_top(self) -> None:
+        focused = self.focused
+        if isinstance(focused, ListView):
+            focused.move_cursor(0)
+        else:
+            self.query_one("#article-view").scroll_home()
+
+    def action_vim_bottom(self) -> None:
+        focused = self.focused
+        if isinstance(focused, ListView):
+            focused.move_cursor(len(focused) - 1)
+        else:
+            self.query_one("#article-view").scroll_end()
+
+    def action_vim_left(self) -> None:
+        self.query_one("#topic-list").focus()
+
+    def action_vim_right(self) -> None:
+        self.query_one("#article-list").focus()
 
     def action_refresh(self) -> None:
         self.fetcher.cache.invalidate_all()
