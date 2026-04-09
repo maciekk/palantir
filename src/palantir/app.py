@@ -13,7 +13,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, ScrollableContainer, Vertical
-from textual.widgets import Footer, Header, Label, ListItem, ListView, Select, Static
+from textual.widgets import Footer, Header, Input, Label, ListItem, ListView, Select, Static
 
 from .config import load_topics
 from .fetcher import Article, FeedFetcher
@@ -220,6 +220,19 @@ class PalantirApp(App):
         color: $text-muted;
         padding: 0 1;
     }
+
+    #search-input {
+        display: none;
+        height: 1;
+        border: none;
+        background: $primary-darken-2;
+        color: $text;
+        padding: 0 1;
+    }
+
+    #search-input.active {
+        display: block;
+    }
     """
 
     BINDINGS = [
@@ -235,6 +248,8 @@ class PalantirApp(App):
         Binding("l", "vim_right", "Right", show=False),
         Binding("g", "vim_top", "Top", show=False),
         Binding("G", "vim_bottom", "Bottom", show=False),
+        Binding("/", "search", "Search"),
+        Binding("escape", "clear_search", "Clear search", show=False),
     ]
 
     def __init__(self, max_width: int = 120, llm_model: str = "llama3.2", **kwargs) -> None:
@@ -249,6 +264,7 @@ class PalantirApp(App):
                 yield ListView(id="topic-list")
             with Vertical(id="right"):
                 yield ListView(id="article-list")
+                yield Input(placeholder="search…", id="search-input")
                 yield ScrollableContainer(
                     Static("", id="article-content"),
                     id="article-view",
@@ -270,6 +286,7 @@ class PalantirApp(App):
         self._ai_backend = "none"
         self._highlight_list = False
         self._compact_list = False
+        self._search_query = ""
 
         models = await list_ollama_models()
         model_select = self.query_one("#model-select", Select)
@@ -341,6 +358,10 @@ class PalantirApp(App):
         content.update("[dim]Loading…[/dim]")
         self.current_article = None
         self._reading_mode = False
+        self._search_query = ""
+        search_input = self.query_one("#search-input", Input)
+        search_input.value = ""
+        search_input.remove_class("active")
         self._set_status(f"Fetching {topic['name']}…")
 
         articles = await self.fetcher.fetch_topic(topic["feeds"])
@@ -352,12 +373,14 @@ class PalantirApp(App):
             content.update("[dim]No articles found.[/dim]")
             self._set_status(f"No articles · {topic['name']}")
         else:
-            for i, article in enumerate(articles):
+            displayed = self._get_displayed_articles()
+            for i, article in enumerate(displayed):
                 article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1, compact=self._compact_list))
             article_list.index = 0
             self._set_status(f"{len(articles)} articles · {topic['name']}")
-            self.current_article = articles[0]
-            self._show_summary(articles[0])
+            if displayed:
+                self.current_article = displayed[0]
+                self._show_summary(displayed[0])
             self._extract_article_keywords(articles)
 
     @work(exclusive=True)
@@ -498,14 +521,26 @@ class PalantirApp(App):
         if self.current_article is article:
             self._show_summary(article)
 
+    def _get_displayed_articles(self) -> list[Article]:
+        if not self._search_query:
+            return self.articles
+        q = self._search_query.lower()
+        return [
+            a for a in self.articles
+            if q in a.title.lower()
+            or (a.summary and q in a.summary.lower())
+            or (a.full_text and q in a.full_text.lower())
+        ]
+
     def _rebuild_article_list(self) -> None:
         article_list = self.query_one("#article-list", ListView)
         current_index = article_list.index
         article_list.clear()
-        for i, article in enumerate(self.articles):
+        displayed = self._get_displayed_articles()
+        for i, article in enumerate(displayed):
             article_list.append(ArticleItem(article, highlight=self._highlight_list, stripe=i % 2 == 1, compact=self._compact_list))
-        if self.articles and current_index is not None:
-            article_list.index = current_index
+        if displayed and current_index is not None:
+            article_list.index = min(current_index, len(displayed) - 1)
 
     def action_toggle_list_highlight(self) -> None:
         self._highlight_list = not self._highlight_list
@@ -518,6 +553,41 @@ class PalantirApp(App):
         self._rebuild_article_list()
         state = "on" if self._compact_list else "off"
         self._set_status(f"Compact list {state}")
+
+    def action_search(self) -> None:
+        search_input = self.query_one("#search-input", Input)
+        search_input.add_class("active")
+        search_input.focus()
+
+    def action_clear_search(self) -> None:
+        search_input = self.query_one("#search-input", Input)
+        if search_input.has_class("active"):
+            search_input.value = ""
+            search_input.remove_class("active")
+            self._search_query = ""
+            self._rebuild_article_list()
+            n = len(self.articles)
+            self._set_status(f"{n} articles" + (f" · {self._current_topic_id}" if self._current_topic_id else ""))
+            self.query_one("#article-list", ListView).focus()
+
+    @on(Input.Changed, "#search-input")
+    def on_search_changed(self, event: Input.Changed) -> None:
+        self._search_query = event.value
+        self._rebuild_article_list()
+        displayed = self._get_displayed_articles()
+        n_total = len(self.articles)
+        n_shown = len(displayed)
+        if self._search_query:
+            self._set_status(f"{n_shown}/{n_total} matching")
+        else:
+            self._set_status(f"{n_total} articles")
+        if displayed:
+            self.current_article = displayed[0]
+            self._show_summary(displayed[0])
+
+    @on(Input.Submitted, "#search-input")
+    def on_search_submitted(self, event: Input.Submitted) -> None:
+        self.query_one("#article-list", ListView).focus()
 
     def action_vim_down(self) -> None:
         focused = self.focused
