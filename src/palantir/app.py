@@ -216,6 +216,7 @@ class PalantirApp(App):
         self.articles: list[Article] = []
         self.current_article: Optional[Article] = None
         self._current_topic_id: Optional[str] = None
+        self._reading_mode: bool = False
         import os
         self._status_msg = "Starting…"
         self._ai_backend = "none"
@@ -257,6 +258,7 @@ class PalantirApp(App):
     def on_article_highlighted(self, event: ListView.Highlighted) -> None:
         if event.item is None or not isinstance(event.item, ArticleItem):
             return
+        self._reading_mode = False
         self.current_article = event.item.article
         self._show_summary(event.item.article)
         # Keep 1-2 items visible below cursor
@@ -270,6 +272,7 @@ class PalantirApp(App):
 
     @on(ListView.Selected, "#article-list")
     def on_article_selected(self, event: ListView.Selected) -> None:
+        self._reading_mode = True
         self._fetch_full_text()
 
     @on(Select.Changed, "#model-select")
@@ -288,6 +291,7 @@ class PalantirApp(App):
         article_list.clear()
         content.update("[dim]Loading…[/dim]")
         self.current_article = None
+        self._reading_mode = False
         self._set_status(f"Fetching {topic['name']}…")
 
         articles = await self.fetcher.fetch_topic(topic["feeds"])
@@ -350,7 +354,7 @@ class PalantirApp(App):
 
     def _update_layout(self) -> None:
         article_list = self.query_one("#article-list")
-        if self.current_article and self.current_article.full_text:
+        if self._reading_mode and self.current_article and self.current_article.full_text:
             article_list.styles.height = "20%"
         else:
             article_list.styles.height = "70%"
